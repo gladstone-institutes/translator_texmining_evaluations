@@ -1,0 +1,34 @@
+# estimate_semmedb_predicate_frequencies - local Docker testing config.
+# Used by `./workflow/pipeline.sh run` (and dry-run).
+
+project_name: "estimate-semmedb-predicate-frequencies-test"
+
+output_dir: ".tests/integration/results"
+samples: "workflow/config/test_samples.tsv"
+
+# Local Docker mode: docker_run() returns a `docker run` prefix.
+# Both flags must be set explicitly: --configfile is merged over config.yaml,
+# so omitting use_apptainer leaves the config.yaml default (true) in effect and
+# trips the SIF auto-pull in onstart.
+execution:
+  use_docker: true
+  use_apptainer: false
+
+# Quickstart mode: use the public bash image so the template runs with no
+# DockerHub setup. Bash is required for Apptainer mode because Snakemake
+# wraps every rule shell in `bash -c 'set -euo pipefail; ...'`; plain alpine
+# would fail with `"bash": executable file not found in $PATH`.
+# Once you've built and pushed your own image with
+#   ./workflow/pipeline.sh build --push
+# swap the values below for:
+#   user: "ruben6um"
+#   name: "hello"
+#   tag:  "0.1.0"
+containers:
+  dir: ""
+  auto_pull: true
+  images:
+    hello:
+      user: "library"
+      name: "bash"
+      tag: "5"

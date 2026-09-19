@@ -1,0 +1,22 @@
+[project]
+name = "estimate-semmedb-predicate-frequencies"
+version = "0.1.0"
+description = "estimate_semmedb_predicate_frequencies"
+requires-python = ">=3.11"
+authors = [
+    { name = "Reuben Thomas", email = "reuben.thomas@gladstone.ucsf.edu" },
+]
+dependencies = [
+    "snakemake>=9.14,<10",
+    "snakemake-executor-plugin-cluster-generic>=1.0",
+    "snakemake-executor-plugin-slurm>=0.11",
+    "snakemake-storage-plugin-fs>=1.0",
+    "pandas>=2.0",
+    "pyarrow>=15.0",
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+]

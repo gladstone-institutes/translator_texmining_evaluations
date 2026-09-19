@@ -1,0 +1,153 @@
+# estimate_semmedb_predicate_frequencies Snakemake pipeline
+#
+# Usage:
+#   # Local testing with Docker
+#   snakemake --configfile workflow/config/test_config.yaml --profile workflow/profiles/local
+#
+#   # Full run on UCSF CoreHPC (Slurm); use workflow/launch.sh for long runs,
+#   # which must not be started from a login shell
+#   snakemake --configfile workflow/config/config_corehpc.yaml --profile workflow/profiles/slurm
+#
+#   # Wynton SGE (DEPRECATED, unmaintained; still works)
+#   snakemake --configfile workflow/config/config_wynton.yaml --profile workflow/profiles/sge
+#
+# See README.md for the full guide.
+
+import re
+from pathlib import Path
+
+
+configfile: "workflow/config/config.yaml"
+
+
+include: "rules/common.smk"
+include: "rules/containers.smk"
+include: "rules/hello.smk"
+
+
+localrules: list_samples, pull_container
+
+
+# Pin both wildcards: they sit adjacent in every path, so an unconstrained
+# {output_dir} lets backtracking split a path the wrong way.
+wildcard_constraints:
+    output_dir=re.escape(config["output_dir"]),
+    sample="|".join(re.escape(s) for s in get_all_samples()),
+
+
+rule all:
+    """Default target: produce one hello.txt per sample."""
+    input:
+        expand(
+            "{output_dir}/{sample}/hello.txt",
+            output_dir=config["output_dir"],
+            sample=get_all_samples(),
+        ),
+
+
+rule clean:
+    """Remove all generated output files."""
+    shell:
+        "rm -rf {config[output_dir]}"
+
+
+rule list_samples:
+    """Print all configured samples."""
+    run:
+        print("Configured samples:")
+        for sample_id in get_all_samples():
+            desc = samples.loc[sample_id, "description"]
+            print(f"  - {sample_id}: {desc}")
+
+
+onstart:
+    print(f"estimate-semmedb-predicate-frequencies pipeline v{PIPELINE_VERSION}")
+    if USE_APPTAINER and config.get("containers", {}).get("auto_pull", True):
+        import os, subprocess
+        container_dir = config["containers"]["dir"]
+        os.makedirs(container_dir, exist_ok=True)
+        for image_name in config["containers"]["images"]:
+            sif_path = get_apptainer_path(image_name)
+            if not os.path.exists(sif_path):
+                docker_uri = get_docker_image(image_name)
+                print(f"Pulling {docker_uri} -> {sif_path}")
+                subprocess.check_call(["apptainer", "pull", sif_path, docker_uri])
+            else:
+                print(f"Container exists: {sif_path}")
+
+
+onsuccess:
+    import csv
+    import socket
+    from datetime import timedelta
+
+    def _num(value):
+        # Unsampled benchmark fields are the literal string "NA".
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    benchmarks_dir = Path(config["output_dir"]) / "benchmarks"
+    rows = []
+    if benchmarks_dir.exists():
+        for tsv in sorted(benchmarks_dir.rglob("*.tsv")):
+            with open(tsv) as f:
+                reader = csv.DictReader(f, delimiter="\t")
+                for row in reader:
+                    sample = tsv.parent.name if tsv.parent != benchmarks_dir else "-"
+                    rule_name = tsv.stem
+                    rows.append((
+                        sample,
+                        rule_name,
+                        _num(row.get("s")),
+                        _num(row.get("max_rss")),
+                        _num(row.get("cpu_time")),
+                    ))
+
+    if rows:
+        total_s = sum(r[2] for r in rows)
+        hdr = f"{'Sample':<20} {'Rule':<40} {'Wall time':>12} {'Max RSS (MB)':>14} {'CPU time (s)':>14}"
+        sep = "-" * len(hdr)
+        print(f"\n{sep}")
+        print("PIPELINE RUNTIME SUMMARY")
+        print(sep)
+        print(hdr)
+        print(sep)
+        for sample, rule_name, wall_s, max_rss, cpu_time in rows:
+            wall_fmt = str(timedelta(seconds=int(wall_s)))
+            print(f"{sample:<20} {rule_name:<40} {wall_fmt:>12} {max_rss:>14.1f} {cpu_time:>14.1f}")
+        print(sep)
+        print(f"{'TOTAL':<20} {'':<40} {str(timedelta(seconds=int(total_s))):>12}")
+        print(sep)
+
+    body_lines = [
+        f"Pipeline: estimate-semmedb-predicate-frequencies v{PIPELINE_VERSION}",
+        f"Host: {socket.gethostname()}",
+        f"Output: {config['output_dir']}",
+        f"Samples: {', '.join(get_all_samples())}",
+    ]
+    write_status("SUCCESS", "\n".join(body_lines))
+    send_notification(
+        f"[estimate-semmedb-predicate-frequencies] Pipeline completed successfully",
+        "\n".join(body_lines),
+    )
+
+
+onerror:
+    import socket
+    body_lines = [
+        f"Pipeline: estimate-semmedb-predicate-frequencies v{PIPELINE_VERSION}",
+        f"Host: {socket.gethostname()}",
+        f"Output: {config['output_dir']}",
+        f"Samples: {', '.join(get_all_samples())}",
+        f"Log: {log}",
+        "",
+        "Check the Snakemake log for the failed rule and error details.",
+        "Re-run the same command to resume from the failed step.",
+    ]
+    write_status("FAILED", "\n".join(body_lines))
+    send_notification(
+        f"[estimate-semmedb-predicate-frequencies] Pipeline FAILED",
+        "\n".join(body_lines),
+    )

@@ -1,0 +1,11 @@
+# Apptainer add-on config for local run-apptainer testing.
+# Merged over test_config.yaml. Swaps Docker mode for Apptainer and
+# points containers.dir at a tmp SIF cache so first runs don't pollute
+# .snakemake/.
+
+execution:
+  use_docker: false
+  use_apptainer: true
+
+containers:
+  dir: ".tests/integration/containers"

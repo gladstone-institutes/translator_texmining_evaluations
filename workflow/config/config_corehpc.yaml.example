@@ -1,0 +1,61 @@
+# estimate_semmedb_predicate_frequencies - UCSF CoreHPC (Slurm) cluster config.
+#
+# Run on the cluster (see workflow/launch.sh -- do NOT run a long snakemake
+# from the login shell; CoreHPC reaps your processes when the SSH session drops):
+#   ./workflow/launch.sh all check      # dry-run, submit nothing
+#   ./workflow/launch.sh all            # download images, then submit snakemake as a job
+#
+# Or directly, for short runs:
+#   snakemake --snakefile workflow/Snakefile \
+#       --configfile workflow/config/config_corehpc.yaml \
+#       --profile workflow/profiles/slurm --dry-run     # confirm DAG first
+#
+# This file only OVERRIDES paths; everything else (resources:, gpu:, images:)
+# is inherited from workflow/config/config.yaml. GPU routing (partition + gres)
+# lives in the `gpu:` block of config.yaml; the Slurm account/partition defaults
+# live in workflow/profiles/slurm/config.yaml.
+#
+# Non-Gladstone CoreHPC users: edit `project_root` (and `containers.bind_paths`
+# only if your shared scratch is not /mnt/scratch).
+
+project_name: "estimate-semmedb-predicate-frequencies"
+
+execution:
+  use_docker: false
+  use_apptainer: true
+
+notification:
+  email: "reuben.thomas@gladstone.ucsf.edu"
+
+# The ONE path to edit: CoreHPC Hive storage, visible as /mnt/... from compute
+# nodes. The relative output_dir and containers.dir below resolve under it,
+# launch.sh keeps the uv/apptainer caches in <project_root>/.cache, and it is
+# bound into every container automatically. TODO: edit to your project storage.
+project_root: "/mnt/gladstone/bioinformatics/projects/estimate-semmedb-predicate-frequencies"
+
+output_dir: "results"
+
+samples: "workflow/config/samples.tsv"
+
+containers:
+  # Pre-pulled .sif files, under project_root. Shared across runs/users if you want.
+  dir: "containers"
+  # false: compute nodes have no outbound internet. Pull on the login node with
+  # `./workflow/launch.sh <scope> prepull`.
+  auto_pull: false
+  # Extra paths to bind into Apptainer containers (project_root is bound for
+  # you). /mnt/scratch is SHARED scratch, visible from every node, and is
+  # required for GPU jobs (tempfiles, matplotlib font cache, pyarrow spill).
+  # Node-local space is /tmp inside a job: Slurm mounts /mnt/lscratch there
+  # for the job's lifetime, and Apptainer binds /tmp by default, so nothing
+  # to add here for that.
+  bind_paths:
+    - "/mnt/scratch"
+  images:
+    # Public image, so the setup check in docs/PIPELINE.md runs before you have
+    # built anything. Once you push your own image, point this at it:
+    #   user: "ruben6um", name: "hello", tag: "0.1.0"
+    hello:
+      user: "library"
+      name: "bash"
+      tag: "5"

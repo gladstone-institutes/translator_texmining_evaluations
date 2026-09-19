@@ -1,0 +1,24 @@
+# Local profile for Docker-based testing.
+# Pure Docker: each rule wraps its shell in `docker run` via docker_run().
+# No Apptainer/Singularity required.
+
+executor: local
+cores: 4
+
+default-resources:
+  mem_free: "2G"
+  threads: 1
+
+# Rules own their resources via _resources()/_threads() in common.smk (from
+# config["resources"][rule]). This profile sets no `config: scheduler`, so
+# _resources() emits nothing and these default-resources apply. Uncomment
+# per-rule overrides here only if a local laptop differs from the rule defaults.
+# set-resources:
+#   heavy_rule:
+#     mem_free: "4G"
+
+jobs: 1
+latency-wait: 30
+printshellcmds: true
+rerun-incomplete: true
+keep-going: false

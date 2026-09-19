@@ -1,0 +1,83 @@
+# estimate_semmedb_predicate_frequencies - main config.
+# Copy to config_<cluster>.yaml for per-cluster overrides.
+
+project_name: "estimate-semmedb-predicate-frequencies"
+
+# Optional single storage path for cluster configs. When set (absolute), a
+# RELATIVE output_dir or containers.dir resolves under it, launch.sh keeps its
+# caches in <project_root>/.cache, and it is bound into every container. See
+# config_corehpc.yaml.example. Unset here, so paths are relative to the checkout.
+# project_root: "/abs/path/to/project/storage"
+
+# Output directory for all results. TODO: point at a persistent location.
+output_dir: "results"
+
+# Sample metadata file (columns: sample_id, description, ...).
+samples: "workflow/config/samples.tsv"
+
+# Per-rule compute resources. Standard units: total memory in GB, total
+# runtime in minutes, thread count. workflow/rules/common.smk:_resources()
+# translates these to scheduler-specific keys per the active profile:
+#   Slurm -> mem_mb (total), runtime (minutes), gres (for --gres on GPU rules)
+#   SGE   -> mem_free (per-slot), scratch, h_rt (HH:MM:SS), gpu   [deprecated]
+# Every rule needs an entry here. Cluster configs (config_<cluster>.yaml) can
+# override individual keys by adding a resources: block with just what changes.
+#
+# These start as guesses. After a run, replace them with observations:
+#   uv run python workflow/scripts/calibrate_resources.py --output_dir <output_dir>
+resources:
+  hello:
+    threads: 1
+    mem_gb: 1
+    runtime_min: 10
+    # scratch_gb: 1   # SGE only (deprecated path)
+    # Optional size-aware runtime (see _runtime_min_scaled in rules/common.smk).
+    # With these set, runtime_min is the cap: use the partition MaxTime.
+    # runtime_base_min: 60
+    # runtime_per_size_min: 30
+
+# Largest node in the partition (`sinfo -o "%P %m" | sort -u`), in GB. Caps a
+# retried job's memory: an unsatisfiable request waits in the queue forever, it never fails.
+max_node_mem_gb: 1500
+
+# GPU settings (used only when a rule passes gpu=True to the helpers). Defaults
+# target UCSF CoreHPC L40s nodes; see workflow/profiles/slurm/README.md.
+gpu:
+  # CoreHPC Slurm: GPU rules are routed to this partition with this gres string.
+  slurm_partition: "small_gpu"
+  slurm_gres: "gpu:nvidia_l40s:1"
+  # Interval (seconds) for the optional nvidia-smi utilization sampler.
+  sampler_interval_s: 5
+  # sge_gpu_mem: "8G"   # SGE gpu.q only, deprecated (needs a sge submit-cmd edit)
+
+# Email notification (optional). Needs 'mail'/'sendmail', so it is a no-op on
+# CoreHPC: launch.sh hands this address to sbatch --mail-user instead.
+notification:
+  email: "reuben.thomas@gladstone.ucsf.edu"
+
+# Execution mode. Set exactly one to true (both false = run on the host).
+#   - use_docker:    wraps each rule's shell in `docker run`     (local testing)
+#   - use_apptainer: wraps each rule's shell in `apptainer exec` (HPC)
+# Containers are launched via the docker_run()/apptainer_run() shell prefixes in
+# common.smk, NOT Snakemake's `container:` directive.
+execution:
+  use_docker: false
+  use_apptainer: true
+  # Run Docker containers as you, not root, so outputs are yours (matters on
+  # Linux hosts). HOME becomes /workspace, the checkout, matching Apptainer.
+  # Set false only for an image that must run as root.
+  docker_run_as_user: true
+
+# Container configuration. Each rule references images by the keys under `images`.
+containers:
+  # Directory for pre-pulled Apptainer .sif files.
+  dir: ".snakemake/containers"
+  # Auto-pull missing .sif files at pipeline start (set false if you manage SIFs yourself).
+  auto_pull: true
+  # Extra paths to bind into Apptainer containers (shared filesystems outside $PWD).
+  bind_paths: []
+  images:
+    hello:
+      user: "ruben6um"
+      name: "hello"
+      tag: "0.1.0"

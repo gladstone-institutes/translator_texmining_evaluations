@@ -1,0 +1,77 @@
+# Slurm profile for UCSF CoreHPC. Validated against CoreHPC (Gladstone) with
+# CPU and GPU jobs. The snakemake-executor-plugin-slurm plugin handles job
+# submission, status polling, and cancellation natively -- no status.sh like
+# the SGE profile needs.
+#
+# Prerequisites (once per clone): `uv sync` installs the plugin (it is a
+# dependency in pyproject.toml).
+#
+# Plugin docs:
+#   https://snakemake.github.io/snakemake-plugin-catalog/plugins/executor/slurm.html
+
+executor: slurm
+
+# Tells common.smk which scheduler is active. Slurm sets CUDA_VISIBLE_DEVICES
+# itself via cgroups when --gres=gpu:N is requested, so apptainer_run does NOT
+# inject its own --env mapping for GPU rules (apptainer inherits the caller's
+# env and torch picks up Slurm's value).
+config:
+  scheduler: "slurm"
+
+default-resources:
+  # Set the account explicitly so the plugin does not try to auto-guess it.
+  # CoreHPC users are under the `hpc_core` account; change for other Slurm sites.
+  slurm_account: "hpc_core"
+  slurm_partition: "cpu"
+  mem_mb: 4000
+  runtime: 60    # minutes
+
+# Rules own their resources via _resources() in common.smk, which translates
+# config["resources"][rule] to Slurm keys (mem_mb, runtime). GPU rules get
+# slurm_partition overridden to the GPU partition and --gres added via the
+# `gres` resource, both read from the config `gpu:` block. Add per-rule
+# overrides under set-resources only for on-cluster tuning, e.g.:
+# set-resources:
+#   my_gpu_rule:
+#     slurm_partition: "small_gpu"
+#     gres: "gpu:nvidia_l40s:1"
+#     max_concurrent_gpu_jobs: 1
+#     mem_mb: 65536
+#     runtime: 120
+
+# Use the greedy job scheduler. The default ILP scheduler (CBC/pulp) stalls at
+# "Selecting jobs to execute..." when a custom resource constraint is present
+# (here max_concurrent_gpu_jobs), trying to globally optimize selection. Greedy
+# still respects all resource caps; it just skips the optimization we don't need.
+# NOTE: distinct from the `config: scheduler=slurm` above, which is a workflow
+# config var read by common.smk, not Snakemake's --scheduler option.
+scheduler: greedy
+
+# Raise to at least the widest fan-out you want running at once.
+jobs: 50
+# Thread budget; must exceed jobs * (fattest rule's threads) or it throttles.
+cores: 4096
+# Per-job mail is deliberately unset: it would send one message per step job.
+# launch.sh puts --mail-type on the DRIVER job instead (see this dir's README).
+latency-wait: 60
+max-jobs-per-second: 5
+max-status-checks-per-second: 2
+local-cores: 1
+
+# Global concurrency cap for the custom `max_concurrent_gpu_jobs` resource that
+# GPU rules declare in common.smk:_resources(). Matches CoreHPC's small_gpu /
+# large_gpu per-user limit of 1 running GPU job. Snakemake will only run this
+# many GPU jobs at a time even if more are ready, keeping the queue clean.
+# Override at the CLI with `--resources max_concurrent_gpu_jobs=N` if you have a
+# higher allowance.
+resources:
+  - "max_concurrent_gpu_jobs=1"
+
+# NOTE: We do not use Snakemake's `software-deployment-method` / `apptainer-args`
+# here. Rules invoke apptainer directly via the apptainer_run() shell prefix from
+# common.smk, which reads bind paths from `containers.bind_paths` in the config
+# and adds `--nv` for GPU rules.
+
+printshellcmds: true
+rerun-incomplete: true
+keep-going: true

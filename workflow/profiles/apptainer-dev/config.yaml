@@ -1,0 +1,25 @@
+# Apptainer profile for dev-node / laptop Apptainer testing.
+# Rules invoke apptainer directly via apptainer_run() in common.smk, so this
+# profile carries only the executor + resource-default scaffolding (no
+# software-deployment-method / apptainer-args). apptainer_run() binds --home
+# $(pwd) plus any containers.bind_paths from the config.
+
+executor: local
+cores: 2
+
+default-resources:
+  mem_free: "2G"
+  threads: 1
+
+# Rules own their resources via _resources()/_threads() in common.smk. No
+# `config: scheduler` here, so _resources() emits nothing and these defaults
+# apply. Uncomment per-rule overrides only if a dev node differs from defaults.
+# set-resources:
+#   heavy_rule:
+#     mem_free: "4G"
+
+jobs: 1
+latency-wait: 30
+printshellcmds: true
+rerun-incomplete: true
+keep-going: false

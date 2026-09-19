@@ -1,0 +1,75 @@
+# DEPRECATED: Wynton / SGE support is no longer maintained. It is kept because
+# it still works and existing pipelines depend on it, but CoreHPC Slurm
+# (workflow/profiles/slurm/) is the supported cluster path -- new work, bug
+# fixes and validation go there. Expect no updates here.
+#
+# SGE cluster profile. Tested on UCSF Wynton; generic enough for other SGE
+# sites with one env-var override (see status.sh).
+#
+# IMPORTANT: On Wynton, mem_free is PER-SLOT. Total memory reserved for a job
+# is mem_free * threads. For example, mem_free=8G with threads=4 reserves 32G.
+# common.smk:_resources() handles this: it divides a rule's canonical mem_gb by
+# its thread count to emit the per-slot mem_free. 'threads' maps to SGE slots
+# via `-pe smp {threads}`.
+
+executor: cluster-generic
+
+# Tells common.smk which scheduler is active, so apptainer_run() knows how to
+# wire CUDA_VISIBLE_DEVICES on GPU rules (SGE exposes the index in $SGE_GPU and
+# needs a manual map; Slurm sets it via cgroups). See common.smk:apptainer_run.
+config:
+  scheduler: "sge"
+
+# -terse makes qsub output only the numeric job ID.
+cluster-generic-submit-cmd: |-
+  mkdir -p logs/{rule} &&
+  qsub -terse -S /bin/bash -cwd -j y -r y \
+    -N sm.{rule} \
+    -pe smp {threads} \
+    -l mem_free={resources.mem_free} \
+    -l scratch={resources.scratch} \
+    -l h_rt={resources.h_rt} \
+    -o logs/{rule}/{jobid}.log
+
+# qstat alone treats crashes as success; status.sh consults qacct exit_status.
+# See status.sh for the full rationale.
+cluster-generic-status-cmd: "bash workflow/profiles/sge/status.sh"
+
+cluster-generic-cancel-cmd: "qdel"
+
+default-resources:
+  mem_free: "4G"
+  scratch: "2G"
+  h_rt: "01:00:00"
+  gpu: 0
+
+# Rules own their resources/threads via _resources()/_threads() in common.smk,
+# read from config["resources"][rule]. Uncomment entries here only when
+# on-cluster tuning needs to differ from the config defaults. IMPORTANT: use
+# `set-threads` (not `set-resources`) to override a rule's threads directive.
+# set-threads:
+#   hello: 1
+# set-resources:
+#   heavy_rule:
+#     mem_free: "10G"        # per-slot: 10G * 24 slots = 240G total
+#     scratch: "20G"
+#     h_rt:    "48:00:00"
+
+jobs: 50
+latency-wait: 120
+max-jobs-per-second: 5
+max-status-checks-per-second: 2
+local-cores: 1
+
+# NOTE: We do not use Snakemake's `software-deployment-method` / `apptainer-args`
+# here. Rules invoke apptainer directly via the apptainer_run() shell prefix from
+# common.smk, which reads bind paths from `containers.bind_paths` in the config.
+#
+# SGE GPU jobs: common.smk carries the $SGE_GPU mapping and a `gpu` resource,
+# but routing jobs to gpu.q requires extending the submit-cmd above (e.g. add
+# `-q gpu.q -l gpu_mem={config[gpu][sge_gpu_mem]}` when {resources.gpu} == 1).
+# The validated GPU path in this template is CoreHPC Slurm (profiles/slurm/).
+
+printshellcmds: true
+rerun-incomplete: true
+keep-going: true

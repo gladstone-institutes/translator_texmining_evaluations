@@ -1,0 +1,21 @@
+# Apptainer add-on config for dry-run-slurm / run-slurm.
+# Merged over test_config.yaml. Flips Docker -> Apptainer and sets
+# project_root, so the test outputs and .sif files land on CoreHPC storage at
+# <project_root>/.tests/integration/results and <project_root>/containers.
+# Parallel to test_config_apptainer.yaml (which targets the deprecated Wynton
+# SGE path).
+#
+# Non-Gladstone CoreHPC users: override project_root on the snakemake command line with
+# --config project_root=/your/path
+
+project_root: "/mnt/gladstone/bioinformatics/projects/estimate-semmedb-predicate-frequencies"
+
+execution:
+  use_docker: false
+  use_apptainer: true
+
+containers:
+  dir: "containers"
+  # Shared scratch on CoreHPC compute nodes (project_root is bound for you).
+  bind_paths:
+    - "/mnt/scratch"

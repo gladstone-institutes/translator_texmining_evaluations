@@ -1,0 +1,43 @@
+# estimate_semmedb_predicate_frequencies - Wynton HPC cluster config.
+#
+# DEPRECATED: Wynton / SGE support is no longer maintained. It is kept because
+# it still works and existing pipelines depend on it, but CoreHPC Slurm
+# (workflow/profiles/slurm/) is the supported cluster path -- new work, bug
+# fixes and validation go there. Expect no updates here.
+#
+# Run on the cluster:
+#   snakemake --snakefile workflow/Snakefile \
+#       --configfile workflow/config/config_wynton.yaml \
+#       --profile workflow/profiles/sge
+#
+# Non-Gladstone users: edit `containers.bind_paths` below to point at your
+# shared storage instead of /gladstone/bioinformatics.
+
+project_name: "estimate-semmedb-predicate-frequencies"
+
+execution:
+  use_docker: false
+  use_apptainer: true
+
+notification:
+  email: "reuben.thomas@gladstone.ucsf.edu"
+
+# Wynton-writable output directory. TODO: edit to your project path.
+output_dir: "/wynton/scratch/reuben.thomas/estimate-semmedb-predicate-frequencies/results"
+
+samples: "workflow/config/samples.tsv"
+
+containers:
+  # Directory of pre-pulled .sif files. Shared across runs/users if you want.
+  dir: "/wynton/scratch/reuben.thomas/estimate-semmedb-predicate-frequencies/containers"
+  auto_pull: true
+  # Paths to bind into Apptainer containers. Default is Gladstone-specific;
+  # edit or add entries as needed.
+  bind_paths:
+    - "/gladstone/bioinformatics"
+    - "/wynton/scratch"
+  images:
+    hello:
+      user: "ruben6um"
+      name: "hello"
+      tag: "0.1.0"

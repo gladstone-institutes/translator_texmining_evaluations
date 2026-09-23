@@ -22,26 +22,31 @@ configfile: "workflow/config/config.yaml"
 
 include: "rules/common.smk"
 include: "rules/containers.smk"
-include: "rules/hello.smk"
+include: "rules/download_semmeddb.smk"
+include: "rules/estimate_predicate_frequencies.smk"
 
 
 localrules: list_samples, pull_container
 
 
-# Pin both wildcards: they sit adjacent in every path, so an unconstrained
-# {output_dir} lets backtracking split a path the wrong way.
+# Pin output_dir: it sits adjacent to other path components, so an
+# unconstrained {output_dir} lets backtracking split a path the wrong way.
+# No {sample} wildcard is in use: both rules below are single, corpus-wide
+# aggregations rather than per-sample computations.
 wildcard_constraints:
     output_dir=re.escape(config["output_dir"]),
-    sample="|".join(re.escape(s) for s in get_all_samples()),
 
 
 rule all:
-    """Default target: produce one hello.txt per sample."""
+    """Default target: the full predicate-frequency table and lookup report."""
     input:
         expand(
-            "{output_dir}/{sample}/hello.txt",
+            "{output_dir}/predicate_frequencies.csv",
             output_dir=config["output_dir"],
-            sample=get_all_samples(),
+        ),
+        expand(
+            "{output_dir}/predicate_frequency_lookup.tsv",
+            output_dir=config["output_dir"],
         ),
 
 

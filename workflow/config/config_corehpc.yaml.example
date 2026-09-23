@@ -52,10 +52,16 @@ containers:
   bind_paths:
     - "/mnt/scratch"
   images:
-    # Public image, so the setup check in docs/PIPELINE.md runs before you have
-    # built anything. Once you push your own image, point this at it:
-    #   user: "ruben6um", name: "hello", tag: "0.1.0"
-    hello:
-      user: "library"
-      name: "bash"
-      tag: "5"
+    # Inherited from config.yaml unless overridden; repeated here as a
+    # reminder that both must be pushed to the registry before a cluster run
+    # (Apptainer pulls the .sif from there -- see `prepull` in docs/PIPELINE.md):
+    #   ./workflow/pipeline.sh build semmeddb_download --push --yes
+    #   ./workflow/pipeline.sh build duckdb_predicates --push --yes
+    semmeddb_download:
+      user: "ruben6um"
+      name: "semmeddb-download"
+      tag: "0.1.0"
+    duckdb_predicates:
+      user: "ruben6um"
+      name: "duckdb-predicates"
+      tag: "0.1.0"

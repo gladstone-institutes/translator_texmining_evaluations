@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Docker image name. Change this (and containers.images.hello in config.yaml)
 # when retargeting a different registry/account.
-IMAGE="ruben6um/hello"
+IMAGE="ruben6um/semmeddb-download"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

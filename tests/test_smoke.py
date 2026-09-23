@@ -7,7 +7,8 @@ def test_required_files_exist():
     for rel in (
         "workflow/Snakefile",
         "workflow/rules/common.smk",
-        "workflow/rules/hello.smk",
+        "workflow/rules/download_semmeddb.smk",
+        "workflow/rules/estimate_predicate_frequencies.smk",
         "workflow/config/test_config.yaml",
         "workflow/config/test_samples.tsv",
         "workflow/profiles/sge/config.yaml",
@@ -17,10 +18,14 @@ def test_required_files_exist():
         assert (root / rel).exists(), f"missing: {rel}"
 
 
-def test_test_samples_has_rows():
+def test_test_samples_has_required_columns():
+    # No rule is per-sample currently (both are corpus-wide aggregations), so
+    # the fixture carries no rows -- just check the required header is intact.
     root = Path(__file__).resolve().parent.parent
-    rows = (root / "workflow/config/test_samples.tsv").read_text().strip().splitlines()
-    assert len(rows) >= 2  # header + at least one sample
+    header = (root / "workflow/config/test_samples.tsv").read_text().splitlines()[0]
+    columns = header.split("\t")
+    assert "sample_id" in columns
+    assert "description" in columns
 
 
 def _config_paths():

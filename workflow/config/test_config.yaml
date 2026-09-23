@@ -14,21 +14,20 @@ execution:
   use_docker: true
   use_apptainer: false
 
-# Quickstart mode: use the public bash image so the template runs with no
-# DockerHub setup. Bash is required for Apptainer mode because Snakemake
-# wraps every rule shell in `bash -c 'set -euo pipefail; ...'`; plain alpine
-# would fail with `"bash": executable file not found in $PATH`.
-# Once you've built and pushed your own image with
-#   ./workflow/pipeline.sh build --push
-# swap the values below for:
-#   user: "ruben6um"
-#   name: "hello"
-#   tag:  "0.1.0"
+# Real images, not the quickstart bash placeholder the hello example used:
+# build them locally first (no push needed for local Docker testing --
+# docker_run() runs the local tag directly):
+#   ./workflow/pipeline.sh build semmeddb_download --yes
+#   ./workflow/pipeline.sh build duckdb_predicates --yes
 containers:
   dir: ""
   auto_pull: true
   images:
-    hello:
-      user: "library"
-      name: "bash"
-      tag: "5"
+    semmeddb_download:
+      user: "ruben6um"
+      name: "semmeddb-download"
+      tag: "0.1.0"
+    duckdb_predicates:
+      user: "ruben6um"
+      name: "duckdb-predicates"
+      tag: "0.1.0"

@@ -37,7 +37,11 @@ containers:
     - "/gladstone/bioinformatics"
     - "/wynton/scratch"
   images:
-    hello:
+    semmeddb_download:
       user: "ruben6um"
-      name: "hello"
+      name: "semmeddb-download"
+      tag: "0.1.0"
+    duckdb_predicates:
+      user: "ruben6um"
+      name: "duckdb-predicates"
       tag: "0.1.0"

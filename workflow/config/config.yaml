@@ -12,8 +12,23 @@ project_name: "estimate-semmedb-predicate-frequencies"
 # Output directory for all results. TODO: point at a persistent location.
 output_dir: "results"
 
-# Sample metadata file (columns: sample_id, description, ...).
+# Sample metadata file (columns: sample_id, description, ...). Unused by the
+# current rules (both are single, corpus-wide aggregations, not per-sample),
+# kept for future per-sample work.
 samples: "workflow/config/samples.tsv"
+
+# SemMedDB-KGX (https://github.com/Translator-CATRAX/SemMedDB-KGX) "uncapped"
+# archive: source for normalized_edges.jsonl / normalized_nodes.jsonl.
+semmeddb_kgx:
+  archive_url: "https://rtx-kg2-public.s3.us-west-2.amazonaws.com/kg2.10.3_semmeddb_dogpark_uncapped_2026_04_07.tar.gz"
+
+# (subject_category, predicate, object_category) triples to report frequency
+# counts for specifically, in addition to the full breakdown CSV. Categories
+# are the most-specific Biolink category (no "biolink:" prefix); predicates
+# likewise without the "biolink:" prefix.
+predicate_lookup:
+  - ["Procedure", "has_input", "PhysicalEntity"]
+  - ["Disease", "located_in", "GrossAnatomicalStructure"]
 
 # Per-rule compute resources. Standard units: total memory in GB, total
 # runtime in minutes, thread count. workflow/rules/common.smk:_resources()
@@ -26,15 +41,20 @@ samples: "workflow/config/samples.tsv"
 # These start as guesses. After a run, replace them with observations:
 #   uv run python workflow/scripts/calibrate_resources.py --output_dir <output_dir>
 resources:
-  hello:
+  # Downloads + extracts the SemMedDB-KGX uncapped archive (edges file alone
+  # is 11GB; the full archive is larger). Guess: mostly network/disk-bound,
+  # not CPU/RAM-heavy. Revisit runtime_min against actual download speed.
+  download_semmeddb:
     threads: 1
-    mem_gb: 1
-    runtime_min: 10
-    # scratch_gb: 1   # SGE only (deprecated path)
-    # Optional size-aware runtime (see _runtime_min_scaled in rules/common.smk).
-    # With these set, runtime_min is the cap: use the partition MaxTime.
-    # runtime_base_min: 60
-    # runtime_per_size_min: 30
+    mem_gb: 2
+    runtime_min: 240
+  # Streams normalized_edges.jsonl (11GB) + normalized_nodes.jsonl through
+  # DuckDB for a join + group-by. Guess: sized generously for the join;
+  # replace after a real run with calibrate_resources.py.
+  estimate_predicate_frequencies:
+    threads: 4
+    mem_gb: 32
+    runtime_min: 180
 
 # Largest node in the partition (`sinfo -o "%P %m" | sort -u`), in GB. Caps a
 # retried job's memory: an unsatisfiable request waits in the queue forever, it never fails.
@@ -77,7 +97,11 @@ containers:
   # Extra paths to bind into Apptainer containers (shared filesystems outside $PWD).
   bind_paths: []
   images:
-    hello:
+    semmeddb_download:
       user: "ruben6um"
-      name: "hello"
+      name: "semmeddb-download"
+      tag: "0.1.0"
+    duckdb_predicates:
+      user: "ruben6um"
+      name: "duckdb-predicates"
       tag: "0.1.0"

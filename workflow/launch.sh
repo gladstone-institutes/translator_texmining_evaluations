@@ -49,11 +49,24 @@ scope_setup() {
       SCOPE_CONFIGS=()
       SCOPE_UNTIL=()
       SCOPE_ALLOW=()
-      SCOPE_IMAGES=(hello)
+      SCOPE_IMAGES=(semmeddb_download duckdb_predicates)
       SCOPE_FLAGS=()
       SCOPE_TIME="7-00:00:00"
       SCOPE_GUARD=0
       SCOPE_DESC="the whole pipeline (rule all)"
+      ;;
+    download)
+      # Just the SemMedDB-KGX download/extract, nothing downstream. Not
+      # checked (SCOPE_GUARD=0): this is the root rule, building it IS the
+      # scope, there is no upstream state that could have gone stale.
+      SCOPE_CONFIGS=()
+      SCOPE_UNTIL=(download_semmeddb)
+      SCOPE_ALLOW=()
+      SCOPE_IMAGES=(semmeddb_download)
+      SCOPE_FLAGS=()
+      SCOPE_TIME="08:00:00"
+      SCOPE_GUARD=0
+      SCOPE_DESC="download + extract the SemMedDB-KGX normalized JSONL files only"
       ;;
     # A cheap leaf rule over finished output wants SCOPE_GUARD=1 and mtime:
     #
@@ -80,8 +93,9 @@ usage() {
 Usage: ./workflow/launch.sh <scope> [check|prepull]
 
 Scopes (a named way of running the pipeline: which rules, images, time limit):
-  all      the whole pipeline (rule all)
-           (add your own in scope_setup() -- see the commented example)
+  all       the whole pipeline (rule all)
+  download  just download_semmeddb (run 'launch.sh all' later to pick up from there)
+            (add your own in scope_setup() -- see the commented example)
 
 Subcommands:
   (none)   download images, then submit snakemake as a Slurm job (the driver)

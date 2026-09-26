@@ -19,7 +19,12 @@ import argparse
 import duckdb
 
 
-def build_frequency_table(con: duckdb.DuckDBPyConnection, nodes_path: str, edges_path: str) -> None:
+def build_frequency_table(
+    con: duckdb.DuckDBPyConnection,
+    nodes_path: str,
+    edges_path: str,
+    max_object_size: int,
+) -> None:
     # Most-specific category = category[1] (DuckDB lists are 1-indexed).
     # KGX/bmt convention orders a node's `category` list most-specific first.
     con.execute(
@@ -30,13 +35,17 @@ def build_frequency_table(con: duckdb.DuckDBPyConnection, nodes_path: str, edges
             replace(category[1], 'biolink:', '') AS most_specific_category
         FROM read_ndjson(
             '{nodes_path}',
-            columns = {{id: 'VARCHAR', category: 'VARCHAR[]'}}
+            columns = {{id: 'VARCHAR', category: 'VARCHAR[]'}},
+            maximum_object_size = {max_object_size}
         )
         """
     )
 
     # Explicit column projection so DuckDB never materializes the large
-    # embedded `has_supporting_studies` text field per edge.
+    # embedded `has_supporting_studies` text field per edge -- but the reader
+    # still buffers each raw JSON line before projecting, so a heavily-cited
+    # edge with a lot of supporting-study text can exceed DuckDB's default
+    # 16MB maximum_object_size (observed max line in the KGX edge set: ~23MB).
     con.execute(
         f"""
         CREATE OR REPLACE TABLE edges AS
@@ -52,7 +61,8 @@ def build_frequency_table(con: duckdb.DuckDBPyConnection, nodes_path: str, edges
                 predicate: 'VARCHAR',
                 object: 'VARCHAR',
                 publications: 'VARCHAR[]'
-            }}
+            }},
+            maximum_object_size = {max_object_size}
         )
         """
     )
@@ -102,6 +112,12 @@ def main() -> None:
         help="Optional DuckDB temp_directory for out-of-core spilling (PRAGMA temp_directory)",
     )
     parser.add_argument(
+        "--max-object-size", type=int, default=67_108_864,
+        help="read_ndjson maximum_object_size in bytes (default 64MiB). Raise this if a "
+             "run fails with 'maximum_object_size ... exceeded' -- some SemMedDB-KGX edges "
+             "embed enough supporting-study text to exceed DuckDB's 16MiB default.",
+    )
+    parser.add_argument(
         "--lookup", nargs=3, metavar=("SUBJECT_CATEGORY", "PREDICATE", "OBJECT_CATEGORY"),
         action="append", default=[],
         help="Print the frequency for one specific triple, e.g. "
@@ -115,7 +131,7 @@ def main() -> None:
     if args.tmp_dir:
         con.execute(f"PRAGMA temp_directory='{args.tmp_dir}'")
 
-    build_frequency_table(con, args.nodes, args.edges)
+    build_frequency_table(con, args.nodes, args.edges, args.max_object_size)
 
     con.execute(f"COPY predicate_frequencies TO '{args.out}' (HEADER, DELIMITER ',')")
     n_rows = con.execute("SELECT count(*) FROM predicate_frequencies").fetchone()[0]

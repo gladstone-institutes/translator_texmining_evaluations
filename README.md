@@ -1,6 +1,6 @@
 # estimate_semmedb_predicate_frequencies
 
-A Snakemake pipeline that downloads the semmeddb database from https://github.com/Translator-CATRAX/SemMedDB-KGX/. It uses the normalized_edges.jsonl and the normalized_nodes.jsonl file to estimate the frequencies of the triples of different subject, predicate and object biolink categories
+A Snakemake pipeline that first downloads the semmeddb database from https://github.com/Translator-CATRAX/SemMedDB-KGX/. It then uses the normalized_edges.jsonl and the normalized_nodes.jsonl files to estimate the frequencies of the triples of different subject, predicate and object biolink categories.
 
 ## Quickstart
 

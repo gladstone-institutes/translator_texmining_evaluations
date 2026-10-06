@@ -30,6 +30,26 @@ predicate_lookup:
   - ["Procedure", "has_input", "PhysicalEntity"]
   - ["Disease", "located_in", "GrossAnatomicalStructure"]
 
+# CTD-anchored SemMedDB recall estimate (rules/download_ctd.smk,
+# rules/estimate_ctd_recall.smk). Source: https://ctdbase.org/downloads/
+# "Curated Chemical-disease associations".
+ctd:
+  curated_chem_disease_url: "https://ctdbase.org/reports/CTD_curated_chemicals_diseases.csv.gz"
+  # Most-specific Biolink categories (no "biolink:" prefix) treated as
+  # chemical-like / disease-like when filtering SemMedDB-KGX edges and
+  # matching CUIs to MeSH, per predicate_frequencies.csv's category breakdown.
+  chemical_categories: ["SmallMolecule", "ChemicalEntity", "Drug", "ChemicalMixture"]
+  disease_categories: ["Disease", "PhenotypicFeature", "DiseaseOrPhenotypicFeature"]
+  # CTD's DirectEvidence value -> which SemMedDB predicates count as a match.
+  # Narrow default: predicates too generic to reflect curated evidence
+  # (related_to, coexists_with, located_in, produces, has_part, derives_from,
+  # occurs_in, precedes) count toward neither.
+  direct_evidence_predicate_map:
+    therapeutic: ["treats_or_applied_or_studied_to_treat"]
+    marker/mechanism:
+      ["causes", "affects", "disrupts", "predisposes_to_condition",
+       "exacerbates_condition", "interacts_with"]
+
 # Per-rule compute resources. Standard units: total memory in GB, total
 # runtime in minutes, thread count. workflow/rules/common.smk:_resources()
 # translates these to scheduler-specific keys per the active profile:
@@ -55,6 +75,18 @@ resources:
     threads: 4
     mem_gb: 32
     runtime_min: 180
+  # Tiny file (~2MB gzipped), no login required. Guess: network-bound.
+  download_ctd:
+    threads: 1
+    mem_gb: 1
+    runtime_min: 15
+  # Same two 11GB/small JSONL inputs as estimate_predicate_frequencies, but
+  # filtered to chemical/disease-category edges before any unnest, so the
+  # working set is much smaller. Guess: replace after a real run.
+  estimate_ctd_recall:
+    threads: 4
+    mem_gb: 16
+    runtime_min: 60
 
 # Largest node in the partition (`sinfo -o "%P %m" | sort -u`), in GB. Caps a
 # retried job's memory: an unsatisfiable request waits in the queue forever, it never fails.

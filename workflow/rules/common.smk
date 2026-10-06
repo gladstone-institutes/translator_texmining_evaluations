@@ -188,7 +188,7 @@ def docker_run(image_name, extra_args=""):
             bind_mounts = f" {bind_mounts}"
         # --entrypoint='' clears any image ENTRYPOINT so the rule's shell
         # command runs verbatim.
-        return f"docker run --rm{extra} --entrypoint='' -v $(pwd):/workspace{bind_mounts} -w /workspace {image_path}"
+        return f"docker run --rm{extra} --entrypoint='' -v \"$(pwd)\":/workspace{bind_mounts} -w /workspace {image_path}"
     return ""
 
 
@@ -206,7 +206,7 @@ def apptainer_run(image_name, gpu=False):
     if not USE_APPTAINER:
         return ""
     sif = get_apptainer_path(image_name)
-    args = ["--home $(pwd)"]
+    args = ['--home "$(pwd)"']
     for p in _bind_paths:
         args.append(f"--bind {p}")
     if gpu:

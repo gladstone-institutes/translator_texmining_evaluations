@@ -24,6 +24,8 @@ include: "rules/common.smk"
 include: "rules/containers.smk"
 include: "rules/download_semmeddb.smk"
 include: "rules/estimate_predicate_frequencies.smk"
+include: "rules/download_ctd.smk"
+include: "rules/estimate_ctd_recall.smk"
 
 
 localrules: list_samples, pull_container
@@ -46,6 +48,14 @@ rule all:
         ),
         expand(
             "{output_dir}/predicate_frequency_lookup.tsv",
+            output_dir=config["output_dir"],
+        ),
+        expand(
+            "{output_dir}/ctd_recall_pairs.csv",
+            output_dir=config["output_dir"],
+        ),
+        expand(
+            "{output_dir}/ctd_recall_summary.csv",
             output_dir=config["output_dir"],
         ),
 

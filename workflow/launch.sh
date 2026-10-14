@@ -68,6 +68,21 @@ scope_setup() {
       SCOPE_GUARD=0
       SCOPE_DESC="download + extract the SemMedDB-KGX normalized JSONL files only"
       ;;
+    ctd_recall)
+      # Only estimate_ctd_recall, over an already-downloaded SemMedDB-KGX and
+      # CTD CSV. download_ctd is deliberately not in SCOPE_ALLOW: compute nodes
+      # have no internet, so fetch the CSV first on the login node with
+      # workflow/scripts/download_ctd.sh. mtime triggers keep a code/params
+      # change in an upstream rule from re-running the 11GB SemMedDB download.
+      SCOPE_CONFIGS=()
+      SCOPE_UNTIL=(estimate_ctd_recall)
+      SCOPE_ALLOW=()
+      SCOPE_IMAGES=(duckdb_predicates)
+      SCOPE_FLAGS=(--rerun-triggers mtime)
+      SCOPE_TIME="04:00:00"
+      SCOPE_GUARD=1
+      SCOPE_DESC="CTD-anchored recall estimate over existing downloads only"
+      ;;
     # A cheap leaf rule over finished output wants SCOPE_GUARD=1 and mtime:
     #
     # plots)
@@ -95,6 +110,7 @@ Usage: ./workflow/launch.sh <scope> [check|prepull]
 Scopes (a named way of running the pipeline: which rules, images, time limit):
   all       the whole pipeline (rule all)
   download  just download_semmeddb (run 'launch.sh all' later to pick up from there)
+  ctd_recall  just estimate_ctd_recall (needs the SemMedDB + CTD downloads in place)
             (add your own in scope_setup() -- see the commented example)
 
 Subcommands:

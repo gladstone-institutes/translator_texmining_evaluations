@@ -1,0 +1,294 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xurl}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\pred}[1]{\texttt{#1}}
+
+\title{Methods: Predicate frequencies in SemMedDB-KGX and\\
+recall against CTD curated chemical--disease associations}
+\author{Reuben Thomas}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+We performed two analyses on the Biolink-normalized Knowledge Graph Exchange
+(KGX) release of the Semantic MEDLINE Database (SemMedDB)~\cite{kilicoglu2012,semmedkgx}:
+(i)~the frequency of each (subject category, predicate, object category)
+triple across the edge set, and (ii)~the recall of SemMedDB chemical--disease
+edges relative to the manually curated chemical--disease associations in the
+Comparative Toxicogenomics Database (CTD)~\cite{ctd}, evaluated only on
+PubMed articles indexed by both resources. Both analyses were implemented as
+SQL queries in DuckDB~\cite{duckdb} and orchestrated with
+Snakemake~\cite{snakemake}.
+
+\section{Data sources}
+
+\paragraph{SemMedDB-KGX.}
+We used the ``uncapped'' SemMedDB-KGX archive
+\code{kg2.10.3\_semmeddb\_dogpark\_uncapped\_2026\_04\_07.tar.gz}
+from the Translator-CATRAX SemMedDB-KGX project~\cite{semmedkgx}, and extracted two
+files from it:
+\begin{itemize}[nosep]
+  \item \code{normalized\_nodes.jsonl}: one record per node, giving its CURIE
+        (a UMLS CUI), an ordered list of Biolink categories~\cite{biolink},
+        and the node normalizer's \code{equivalent\_identifiers}
+        cross-references;
+  \item \code{normalized\_edges.jsonl}: one record per
+        (subject, predicate, object) edge, with Biolink predicates and the list
+        of supporting PubMed identifiers (\code{publications}).
+\end{itemize}
+This edge set is a filtered subset of raw SemMedDB. Upstream it was filtered
+by minimum supporting-publication count, by Biolink domain/range constraints,
+and by removing predicates excluded by BioThings Explorer (see the
+SemMedDB-KGX documentation). So all frequencies and recall estimates below
+describe this curated edge set, not the raw SemMedDB \code{PREDICATION}
+table.
+
+\paragraph{CTD.}
+We downloaded CTD's curated chemical--disease associations file
+(\code{CTD\_curated\_chemicals\_diseases.csv.gz}) from
+\url{https://ctdbase.org/reports/}. Each row gives a chemical (a MeSH
+accession), a disease (a MeSH or OMIM CURIE), a \code{DirectEvidence} value
+(\code{therapeutic} or \code{marker/mechanism}), and a pipe-delimited list of
+the PubMed IDs that support that evidence type. CTD does not version this file
+at the URL, so the release we used is the one current on the download date.
+
+\section{Category assignment}
+
+Each node was assigned its \emph{most specific} Biolink category: the first
+element of its \code{category} list, following the KGX convention of ordering
+categories from most to least specific. The \code{biolink:} prefix was removed
+from categories and predicates.
+
+\section{Predicate frequency estimation}
+
+We joined every edge to the most specific category of its subject and object
+nodes, and grouped the edges by
+(subject category, predicate, object category). Each group reports two
+counts:
+\begin{itemize}[nosep]
+  \item $n_{\text{edges}}$: the number of distinct edges in the group;
+  \item $n_{\text{publications}}$: the sum, over those edges, of the length of
+        each edge's \code{publications} list. This is a count of edge--article
+        support instances, not of distinct articles.
+\end{itemize}
+Edges whose subject or object had no node record are excluded by the inner
+join. We also reported counts separately for a configured set of triples of
+interest (for example, \code{Procedure}--\pred{has\_input}--\code{PhysicalEntity}
+and \code{Disease}--\pred{located\_in}--\code{GrossAnatomicalStructure}). A
+triple that does not occur is reported with zero counts.
+
+\section{Recall against CTD}
+
+\subsection{Mapping SemMedDB concepts to MeSH}
+
+SemMedDB identifies concepts by UMLS CUI, while CTD uses MeSH. We mapped CUIs
+to MeSH using the \code{MESH:} entries in each node's
+\code{equivalent\_identifiers}. Because this mapping comes from the node
+normalizer's existing cross-references, it does not require a UMLS
+Metathesaurus (MRCONSO) license. A CUI with several MeSH cross-references
+keeps all of them, so the mapping can be many-to-many.
+
+Chemical-like and disease-like nodes were defined by their most specific
+category:
+\begin{itemize}[nosep]
+  \item chemical: \code{SmallMolecule}, \code{ChemicalEntity}, \code{Drug},
+        \code{ChemicalMixture};
+  \item disease: \code{Disease}, \code{PhenotypicFeature},
+        \code{DiseaseOrPhenotypicFeature}.
+\end{itemize}
+
+\subsection{SemMedDB chemical--disease assertions}
+
+We kept only edges with a chemical-like subject and a disease-like object, so
+edges asserted in the opposite direction (disease $\rightarrow$ chemical) are
+not considered. Each retained edge was expanded over its \code{publications}
+list, and its subject and object were mapped to MeSH. This gives the set of
+distinct tuples
+\[
+  S = \{(c, p, d, m)\},
+\]
+where $c$ is a chemical MeSH ID, $p$ a Biolink predicate, $d$ a disease MeSH
+ID and $m$ a PubMed ID. Subjects or objects without a MeSH cross-reference
+drop out at this step.
+
+\subsection{CTD reference assertions}
+
+Each CTD row was expanded over its \code{DirectEvidence} values and its PubMed
+IDs, and the chemical accession was prefixed with \code{MESH:}. This gives the
+set of distinct tuples
+\[
+  C = \{(c, d, e, m)\},
+\]
+where $e \in \{\code{therapeutic}, \code{marker/mechanism}\}$. Rows whose
+disease is an OMIM identifier (not MeSH) cannot match SemMedDB's MeSH-mapped
+diseases, so we excluded them and recorded how many there were.
+
+\subsection{Common-article anchor}
+
+A CTD assertion can only be recovered by SemMedDB if SemMedDB processed the
+same article, so we restricted the evaluation to articles both resources
+cover. We defined the common PubMed set as
+\[
+  M = \pi_m(C) \cap \pi_m(S),
+\]
+where $\pi_m$ is the set of distinct PubMed IDs in a table, and $\pi_m(S)$ is
+taken over chemical--disease edges only. The evaluation set is
+$C_M = \{(c,d,e,m) \in C : m \in M\}$, and SemMedDB is restricted the same way
+to $S_M$.
+
+\subsection{Matching criteria}
+
+Each CTD assertion $(c,d,e,m) \in C_M$ was scored against two criteria of
+increasing strictness:
+\begin{description}[nosep]
+  \item[Entity match:] SemMedDB asserts \emph{some} relation between $c$ and
+        $d$ in article $m$:
+        $\exists\, p : (c,p,d,m) \in S_M$.
+  \item[Predicate match:] SemMedDB asserts such a relation with a predicate
+        consistent with CTD's evidence type:
+        $\exists\, p \in P(e) : (c,p,d,m) \in S_M$.
+\end{description}
+The allowed predicate sets $P(e)$ are given in
+Table~\ref{tab:predmap}. We chose them conservatively: generic predicates that
+do not reflect curated evidence (\pred{related\_to}, \pred{coexists\_with},
+\pred{located\_in}, \pred{produces}, \pred{has\_part}, \pred{derives\_from},
+\pred{occurs\_in}, \pred{precedes}) count toward neither evidence type. For
+each CTD assertion we also recorded the full list of SemMedDB predicates that
+link the same chemical, disease and article, so that alternative predicate
+mappings can be assessed afterwards.
+
+\begin{table}[h]
+  \centering
+  \caption{SemMedDB predicates counted as consistent with each CTD
+           \code{DirectEvidence} type.}
+  \label{tab:predmap}
+  \begin{tabularx}{0.9\linewidth}{@{}lX@{}}
+    \toprule
+    CTD \code{DirectEvidence} & Allowed SemMedDB predicates $P(e)$ \\
+    \midrule
+    \code{therapeutic}      & \pred{treats\_or\_applied\_or\_studied\_to\_treat} \\
+    \code{marker/mechanism} & \pred{causes}, \pred{affects}, \pred{disrupts},
+                              \pred{predisposes\_to\_condition},
+                              \pred{exacerbates\_condition},
+                              \pred{interacts\_with} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Recall}
+
+For each evidence type $e$, and for all types pooled, recall is the fraction
+of CTD assertions in the evaluation set that are matched:
+\[
+  R^{\text{entity}}_e =
+    \frac{\bigl|\{x \in C_M^{(e)} : x \text{ entity-matched}\}\bigr|}
+         {\bigl|C_M^{(e)}\bigr|},
+  \qquad
+  R^{\text{predicate}}_e =
+    \frac{\bigl|\{x \in C_M^{(e)} : x \text{ predicate-matched}\}\bigr|}
+         {\bigl|C_M^{(e)}\bigr|},
+\]
+where $C_M^{(e)}$ is the subset of $C_M$ with evidence type $e$. The unit of
+evaluation is a (chemical, disease, evidence type, article) tuple. In the
+pooled estimate, a chemical--disease pair supported by the same article under
+both evidence types therefore counts twice. By construction,
+$R^{\text{predicate}}_e \le R^{\text{entity}}_e$.
+
+\subsection{Diagnostics}
+
+We also report: the number of common PubMed IDs and the number of distinct
+PubMed IDs on each side; the number of CTD rows and distinct
+chemical--disease pairs excluded for OMIM disease identifiers; and the
+fraction of chemical-subject and disease-object CUIs (among chemical--disease
+edges) that have a MeSH cross-reference.
+
+\section{Limitations}
+
+\begin{itemize}
+  \item \textbf{Filtered edge set.} SemMedDB-KGX excludes low-support and
+        constraint-violating predications, so recall describes this curated
+        release rather than raw SemMedDB, and is likely lower than raw
+        SemMedDB's.
+  \item \textbf{Identifier mapping.} CUIs without a MeSH cross-reference, and
+        CTD diseases identified only by OMIM, cannot be matched. Matching is
+        on exact MeSH identifiers, with no credit for parent or child
+        concepts in the MeSH hierarchy.
+  \item \textbf{Direction and category.} Only chemical $\rightarrow$ disease
+        edges are considered, and only for nodes whose \emph{most specific}
+        category is in the configured sets. A chemical whose most specific
+        category is outside these sets (for example, a protein-like category)
+        is not considered.
+  \item \textbf{Predicate mapping.} Predicate recall depends on the choice of
+        $P(e)$ in Table~\ref{tab:predmap}. Entity recall gives an upper
+        bound that does not depend on that choice.
+\end{itemize}
+
+\section{Implementation and reproducibility}
+
+The analyses are implemented in a Snakemake (v9.27.0) workflow. The
+predicate-frequency and recall queries run in DuckDB 1.5.5 (Python 3.12),
+inside a pinned container image; the downloads run in a separate Debian-based
+image containing \code{curl} and \code{tar}. JSON Lines were read with an
+explicit column projection, which avoids loading the large embedded
+supporting-text field, and with a 64\,MiB maximum record size, because
+individual heavily cited edges exceed DuckDB's 16\,MiB default. DuckDB was
+given an explicit memory limit and an on-disk spill directory so that it could
+process the inputs out of core. The workflow ran on the UCSF CoreHPC Slurm
+cluster. Because the compute nodes have no outbound network access, both
+source datasets were downloaded on a login node beforehand. The workflow
+writes the following outputs:
+\code{predicate\_frequencies.csv} and
+\code{predicate\_frequency\_lookup.tsv} for the frequency analysis, and
+\code{ctd\_recall\_pairs.csv} (one row per CTD assertion in $C_M$, with its
+match flags and the matched SemMedDB predicates) and
+\code{ctd\_recall\_summary.csv} (recall by evidence type and pooled) for the
+recall analysis.
+
+\begin{thebibliography}{9}
+
+\bibitem{kilicoglu2012}
+H.~Kilicoglu, D.~Shin, M.~Fiszman, G.~Rosemblat, T.~C.~Rindflesch.
+SemMedDB: a PubMed-scale repository of biomedical semantic predications.
+\emph{Bioinformatics}, 28(23):3158--3160, 2012.
+
+\bibitem{semmedkgx}
+Translator-CATRAX. SemMedDB-KGX.
+\url{https://github.com/Translator-CATRAX/SemMedDB-KGX}.
+
+\bibitem{ctd}
+A.~P.~Davis \emph{et al.}
+Comparative Toxicogenomics Database (CTD).
+\emph{Nucleic Acids Research}. \url{https://ctdbase.org}.
+
+\bibitem{biolink}
+D.~R.~Unni \emph{et al.}
+Biolink Model: a universal schema for knowledge graphs in clinical,
+biomedical, and translational science.
+\emph{Clinical and Translational Science}, 15(8):1848--1855, 2022.
+
+\bibitem{duckdb}
+M.~Raasveldt, H.~M\"uhleisen.
+DuckDB: an embeddable analytical database.
+In \emph{Proceedings of SIGMOD}, 2019.
+
+\bibitem{snakemake}
+F.~M\"older \emph{et al.}
+Sustainable data analysis with Snakemake.
+\emph{F1000Research}, 10:33, 2021.
+
+\end{thebibliography}
+
+\end{document}
